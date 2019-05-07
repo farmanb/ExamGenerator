@@ -1,6 +1,7 @@
 #!/usr/bin/env perl
 use strict;
 use warnings;
+use File::Path;
 
 my $standardsFile = "standards.csv";
 my $latexSourceFile = "exam03-161.tex";
@@ -15,10 +16,6 @@ sub printGradebook{
     foreach my $name (keys %{$gradebookRef}){
 	my %grades = %{$gradebookRef->{$name}};
 	printStudentGrades(\%grades);
-	#print $name . "\n";
-	#foreach my $standard (keys %grades){
-	#print "\t$standard: " . $grades{$standard} . "\n";
-	#}
     }
 }
 
@@ -58,8 +55,6 @@ sub createGradebook{
 sub parseExam{
     my ($latexSourceFile,$genericSourceLines, $problems) = (@_);
 
-    print $latexSourceFile;
-
     my $isGeneric = 1;
     my $sectionName;
     my @sectionData;
@@ -96,11 +91,13 @@ sub parseExam{
 
 sub buildExam{
     my ($student, $genericSourceLines, $problems, $grades) = (@_);
+
+    my %report;
     my $exam = "";
 
     #Start Debug
     print "********** Building an exam for $student **********\n";
-    printStudentGrades($grades);
+    #printStudentGrades($grades);
     #End Debug
     
     #This adds the student's name on the Name Line.
@@ -120,13 +117,30 @@ sub buildExam{
 	#If the student hasn't mastered the standard yet, print the problems from that standard.
 	if ($grades->{$standard} ne "M"){ 
 	    $exam .= "$problems->{$standard}\n";
+	    $report{$standard} = 1;
 	}
     }
 
     #End the document.
     $exam .= "\n\\end{document}\n";
 
+    checkExam($grades, \%report);
+    
+    #print "Problems on student's exam: \n";
+    #print join "\n", @report;
+    
     return $exam;
+}
+
+#Check to make sure that the student gets a problem for each standard they have not mastered.
+sub checkExam{
+    my ($gradesRef, $problemsRef) = (@_);
+
+    foreach my $standard (keys %{$gradesRef}){
+	if ($gradesRef->{$standard} ne "M" && !(exists $problemsRef->{$standard})){
+	    print "Error:\n Standard: $standard\n Grade: $gradesRef->{$standard}\n Problem not included!\n "
+	}
+    }
 }
 
 my %gradeBook = createGradebook($standardsFile);
@@ -136,44 +150,42 @@ my %problems;
 
 parseExam($latexSourceFile, \@genericSourceLines, \%problems);
 
+#Check the make sure that there is a problem for each of the standards.
+#If not, alert and exit.
+foreach my $standard (@standards){
+    if (!exists $problems{$standard}){
+	print "Error: There is no problem for " . $standard . "\n";
+	exit;
+    }
+}
+
 #Store the generic name line.  This is a kludge, but allows customization.
 #After each student exam gets built, this is used to replace the entry in the generic source lines.
 $nameLine = $genericSourceLines[$nameLineNum];
 
+my $buildDir = 'build/tex';
+
+#Check to see if the build directory exists
+if (!(-e $buildDir and -d $buildDir)){
+    #If one of the two fails, make sure there isn't something else with the same name.
+    if (!(-e $buildDir)){
+	#Create the build directory
+	File::Path::make_path($buildDir);
+	my $pdfDir = "$buildDir/../pdf";
+	File::Path::make_path($pdfDir);
+    }
+}
+
 foreach my $student (keys %gradeBook){
     #Create a file for the student's exam:
     my $fileBase = "exam03-161-$student";
-    my $filename = "build/tex/$fileBase.tex";
-    open(my $outfh, '>', $filename) or die "Could not open file '$filename' $!";
-
-    #Takes a student name, the generic source, problems, and the student's grades.
-    #my $exam = 
+    my $fileName = "$buildDir/$fileBase.tex";
+    open(my $outfh, '>', $fileName) or die "Could not open file '$fileName' $!";
     
-    #This adds the student's name on the Name Line.
-    #$genericSourceLines[$nameLineNum] =~ s/\<Student Name\>/$student/;
-
-    #Print all the generic stuff before the content.
-    #print $outfh join "\n", @genericSourceLines;
-
-    #Replace the name line
-    #$genericSourceLines[$nameLineNum] = $nameLine;
-
-    #Grab the grades for the student.
-    #my $hashRef = $gradeBook{$student};
-
-    #Iterate over the standards being tested.
-    #foreach my $standard (@standards){
-	#If the student hasn't mastered the standard yet, print the problems from that standard.
-	#if ($hashRef->{$standard} ne "M"){ 
-	#    print $outfh "$problems{$standard}\n";
-	#}
-    #}
-
-    #End the document.
-    #print $outfh "\n\\end{document}\n";
     print $outfh buildExam($student, \@genericSourceLines, \%problems,$gradeBook{$student});
-    close $outfh or warn "Coud not close '$filename' $!";
-
-    my $cmd = "cd build/tex && latexmk -silent -pdf '$fileBase.tex' && mv '$fileBase.pdf' ../pdf/ && cd ..";
-    system($cmd);
+    close $outfh or warn "Could not close '$fileName' $!";
 }
+
+#Batch compile the exams.
+my $cmd = "cd build/tex && latexmk -silent -pdf && cp *.pdf ../pdf/";
+system($cmd);
