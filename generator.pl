@@ -89,17 +89,25 @@ sub parseExam{
     close $fh or warn "close failed: $!";
 }
 
+#Check to make sure that the student gets a problem for each standard they have not mastered.
+sub checkExam{
+    my ($gradesRef, $problemsRef) = (@_);
+
+    foreach my $standard (keys %{$gradesRef}){
+	if ($gradesRef->{$standard} ne "M" && !(exists $problemsRef->{$standard})){
+	    print "Error:\n Standard: $standard\n Grade: $gradesRef->{$standard}\n Problem not included!\n "
+	}
+    }
+}
+
 sub buildExam{
     my ($student, $genericSourceLines, $problems, $grades) = (@_);
 
     my %report;
     my $exam = "";
 
-    #Start Debug
     print "********** Building an exam for $student **********\n";
-    #printStudentGrades($grades);
-    #End Debug
-    
+
     #This adds the student's name on the Name Line.
     $genericSourceLines->[$nameLineNum] =~ s/\<Student Name\>/$student/;
 
@@ -108,10 +116,7 @@ sub buildExam{
 
     #Replace the name line
     $genericSourceLines->[$nameLineNum] = $nameLine;
-
-    #Grab the grades for the student.
-    #my $hashRef = $gradeBook{$student};
-
+    
     #Iterate over the standards being tested.
     foreach my $standard (@standards){
 	#If the student hasn't mastered the standard yet, print the problems from that standard.
@@ -125,24 +130,11 @@ sub buildExam{
     $exam .= "\n\\end{document}\n";
 
     checkExam($grades, \%report);
-    
-    #print "Problems on student's exam: \n";
-    #print join "\n", @report;
-    
+
     return $exam;
 }
 
-#Check to make sure that the student gets a problem for each standard they have not mastered.
-sub checkExam{
-    my ($gradesRef, $problemsRef) = (@_);
-
-    foreach my $standard (keys %{$gradesRef}){
-	if ($gradesRef->{$standard} ne "M" && !(exists $problemsRef->{$standard})){
-	    print "Error:\n Standard: $standard\n Grade: $gradesRef->{$standard}\n Problem not included!\n "
-	}
-    }
-}
-
+#Entry point
 my %gradeBook = createGradebook($standardsFile);
 
 my @genericSourceLines;
